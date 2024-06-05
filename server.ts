@@ -30,6 +30,20 @@ async function handleWebSocket(ws: WebSocket) {
       // Handle incoming text messages
       console.log("Received message:", msg);
 
+      // Check if the message is of type 'SAVE_ACCESS_TOKEN'
+      try {
+        const data = JSON.parse(msg);
+        if (data.message === 'SAVE_ACCESS_TOKEN') {
+          // Handle the SAVE_ACCESS_TOKEN message
+          console.log("Received SAVE_ACCESS_TOKEN message");
+          console.log("Access Token:", data.accessToken);
+          
+          // Implement your logic to save the access token or perform any necessary actions here
+        }
+      } catch (error) {
+        console.error("Error parsing WebSocket message:", error);
+      }
+
       // Echo the message back to the client
       await ws.send(msg);
     }
