@@ -21,7 +21,8 @@ Deno.serve({
                     const message = JSON.parse(event.data);
 
                     if (message && message.message === "SAVE_ACCESS_TOKEN") {
-                        const { accessToken, refreshToken } = message;
+                        const accessToken = message.accessToken
+                        const refreshToken = message.refreshToken
 
                         console.log(`Forwarding Access Token: ${accessToken} and Refresh Token: ${refreshToken}`);
                         
