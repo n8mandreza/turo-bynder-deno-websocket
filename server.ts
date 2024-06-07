@@ -1,53 +1,61 @@
-// Import the necessary dependencies from the Deno standard library
-import { serve } from "https://deno.land/std/http/server.ts";
-import { acceptable, acceptWebSocket, WebSocket } from "https://deno.land/std/ws/mod.ts";
+const subscribers = new Set<WebSocket>();
 
-// Create an HTTP server using Deno's serve function
-const server = serve({ port: 8080 });
-console.log("HTTP server started on http://localhost:8080");
+Deno.serve({
+    port: 80,
+    handler: async (request) => {
+        // If the request is a websocket upgrade,
+        // we need to use the Deno.upgradeWebSocket helper
+        if (request.headers.get("upgrade") === "websocket") {
+            const { socket, response } = Deno.upgradeWebSocket(request);
 
-// Handle incoming HTTP requests
-for await (const req of server) {
-  // Check if the request is a WebSocket upgrade request
-  if (acceptable(req)) {
-    acceptWebSocket({
-      conn: req.conn,
-      bufReader: req.r,
-      bufWriter: req.w,
-      headers: req.headers,
-    })
-      .then(handleWebSocket)
-      .catch((err) => console.error(`Failed to accept WebSocket: ${err}`));
-  }
-}
+            subscribers.add(socket);
 
-// Define the function to handle WebSocket connections and messages
-async function handleWebSocket(ws: WebSocket) {
-  console.log("WebSocket connected");
+            socket.onopen = () => {
+                console.log("CONNECTED");
+            };
 
-  for await (const msg of ws) {
-    if (typeof msg === "string") {
-      // Handle incoming text messages
-      console.log("Received message:", msg);
+            socket.onmessage = (event) => {
+                console.log(`RECEIVED: ${event.data}`);
+                
+                try {
+                    const message = JSON.parse(event.data);
 
-      // Check if the message is of type 'SAVE_ACCESS_TOKEN'
-      try {
-        const data = JSON.parse(msg);
-        if (data.message === 'SAVE_ACCESS_TOKEN') {
-          // Handle the SAVE_ACCESS_TOKEN message
-          console.log("Received SAVE_ACCESS_TOKEN message");
-          console.log("Access Token:", data.accessToken);
-          
-          // Implement your logic to save the access token or perform any necessary actions here
+                    if (message && message.message === "SAVE_ACCESS_TOKEN") {
+                        const { accessToken, refreshToken } = message;
+
+                        console.log(`Forwarding Access Token: ${accessToken} and Refresh Token: ${refreshToken}`);
+                        
+                        // Broadcasting to all subscribers
+                        for (const subscriber of subscribers) {
+                          if (subscriber !== socket) { // Optional: prevent sending back to the sender
+                            subscriber.send(JSON.stringify({
+                              message: 'SAVE_ACCESS_TOKEN',
+                              accessToken,
+                              refreshToken
+                            }));
+                          }
+                        }
+                    }
+                } catch (error) {
+                    console.error("Failed to parse message as JSON:", error);
+                }
+            };
+
+            socket.onclose = () => {
+                console.log("DISCONNECTED");
+                subscribers.delete(socket);
+            };
+
+            socket.onerror = (error) => {
+                console.error("ERROR:", error);
+            };
+
+            return response;
+        } else {
+            // If the request is a normal HTTP request,
+            // we serve the client HTML file.
+            const file = await Deno.open("./index.html", { read: true });
+            return new Response(file.readable);
         }
-      } catch (error) {
-        console.error("Error parsing WebSocket message:", error);
-      }
-
-      // Echo the message back to the client
-      await ws.send(msg);
-    }
-  }
-
-  console.log("WebSocket disconnected");
-}
+    },
+});
